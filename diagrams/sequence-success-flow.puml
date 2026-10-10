@@ -1,0 +1,78 @@
+
+@startuml
+title Saga - Fluxo de Sucesso da Compra
+
+autonumber
+
+actor Cliente
+participant "Order Service" as Order
+participant "Saga Orchestrator" as Saga
+queue "Message Broker" as Broker
+participant "Inventory Service" as Inventory
+participant "Payment Service" as Payment
+participant "Gateway Financeiro" as Gateway
+
+== Criacao do pedido ==
+
+Cliente -> Order: POST /orders
+activate Order
+Order -> Order: Criar pedido PENDING
+Order --> Cliente: 202 Accepted + orderId
+Order -> Saga: Iniciar Saga
+deactivate Order
+
+activate Saga
+Saga -> Saga: Persistir estado STARTED
+
+== Reserva de estoque ==
+
+Saga -> Broker: ReserveStock(orderId)
+Broker -> Inventory: ReserveStock(orderId)
+activate Inventory
+
+Inventory -> Inventory: Validar disponibilidade
+Inventory -> Inventory: Reservar produtos
+Inventory --> Broker: StockReserved
+deactivate Inventory
+
+Broker --> Saga: StockReserved
+Saga -> Saga: Atualizar estado STOCK_RESERVED
+
+== Processamento do pagamento ==
+
+Saga -> Broker: ProcessPayment(orderId)
+Broker -> Payment: ProcessPayment(orderId)
+activate Payment
+
+Payment -> Gateway: Solicitar pagamento
+activate Gateway
+Gateway --> Payment: Pagamento aprovado
+deactivate Gateway
+
+Payment -> Payment: Registrar pagamento
+Payment --> Broker: PaymentApproved
+deactivate Payment
+
+Broker --> Saga: PaymentApproved
+Saga -> Saga: Atualizar estado PROCESSING_PAYMENT
+
+== Confirmacao do pedido ==
+
+Saga -> Broker: ConfirmOrder(orderId)
+Broker -> Order: ConfirmOrder(orderId)
+activate Order
+
+Order -> Order: Atualizar status CONFIRMED
+Order --> Broker: OrderConfirmed
+deactivate Order
+
+Broker --> Saga: OrderConfirmed
+Saga -> Saga: Marcar Saga COMPLETED
+deactivate Saga
+
+== Consulta do resultado ==
+
+Cliente -> Order: GET /orders/{orderId}
+Order --> Cliente: Pedido CONFIRMED
+
+@enduml
