@@ -1,0 +1,47 @@
+
+@startuml
+title Arquitetura Geral - Saga de Compra
+
+left to right direction
+skinparam componentStyle rectangle
+
+actor Cliente
+
+component "API de Pedidos" as API
+component "Order Service" as ORDER
+component "Saga Orchestrator" as SAGA
+queue "Message Broker" as BROKER
+component "Inventory Service" as INVENTORY
+component "Payment Service" as PAYMENT
+cloud "Gateway Financeiro" as GATEWAY
+
+database "Banco de Pedidos" as DB_ORDER
+database "Estado da Saga" as DB_SAGA
+database "Banco de Estoque" as DB_INV
+database "Banco de Pagamentos" as DB_PAY
+
+Cliente --> API : POST /orders
+API --> ORDER : Criar pedido
+ORDER --> DB_ORDER : Persistir pedido
+ORDER --> SAGA : Iniciar Saga
+
+SAGA --> DB_SAGA : Persistir estado
+SAGA <--> BROKER : Publicar comandos\nReceber respostas
+
+BROKER <--> INVENTORY : Reserva / Liberação
+INVENTORY --> DB_INV : Atualizar estoque
+
+BROKER <--> PAYMENT : Processar pagamento
+PAYMENT --> GATEWAY : Autorizar / Capturar
+PAYMENT --> DB_PAY : Registrar resultado
+
+SAGA --> ORDER : Confirmar ou cancelar
+ORDER --> DB_ORDER : Atualizar status
+API --> Cliente : orderId e status
+
+note bottom of SAGA
+  Coordena as etapas,
+  registra resultados e
+  inicia compensações.
+end note
+@enduml
